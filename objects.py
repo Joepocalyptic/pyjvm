@@ -463,15 +463,149 @@ class ParameterAnnotations:
 
 
 @dataclass
-class AttributeRuntimeInvisibleParameterAnnotations(Attribute):
+class AttributeRuntimeVisibleParameterAnnotations(Attribute):
     num_parameters: int
     parameter_annotations: list[ParameterAnnotations]
 
 
 @dataclass
-class AttributeRuntimeVisibleParameterAnnotations(Attribute):
+class AttributeRuntimeInvisibleParameterAnnotations(Attribute):
     num_parameters: int
     parameter_annotations: list[ParameterAnnotations]
+
+
+class TargetInfo:
+    pass
+
+
+@dataclass
+class TypeParameterTarget(TargetInfo):
+    type_parameter_index: int
+
+
+@dataclass
+class SupertypeTarget(TargetInfo):
+    supertype_index: int
+
+
+@dataclass
+class TypeParameterBoundTarget(TargetInfo):
+    type_parameter_index: int
+    bound_index: int
+
+
+@dataclass
+class EmptyTarget(TargetInfo):
+    pass
+
+
+@dataclass
+class FormalParameterTarget(TargetInfo):
+    formal_parameter_index: int
+
+
+@dataclass
+class ThrowsTarget(TargetInfo):
+    throws_type_index: int
+
+
+@dataclass
+class LocalvarInfo:
+    start_pc: int
+    length: int
+    index: int
+
+
+@dataclass
+class LocalvarTarget(TargetInfo):
+    table_length: int
+    table: list[LocalvarInfo]
+
+
+@dataclass
+class CatchTarget(TargetInfo):
+    exception_table_index: int
+
+
+@dataclass
+class OffsetTarget(TargetInfo):
+    offset: int
+
+
+@dataclass
+class TypeArgumentTarget(TargetInfo):
+    offset: int
+    type_argument_index: int
+
+
+@dataclass
+class PathStep:
+    type_path_kind: int
+    type_argument_index: int
+
+
+@dataclass
+class TypePath:
+    path_length: int
+    path: list[PathStep]
+
+
+@dataclass
+class TypeAnnotation:
+    target_type: str
+    target_info: TargetInfo
+    target_path: TypePath
+    type_index: int
+    num_element_value_pairs: int
+    element_value_pairs: list[ElementValuePair]
+
+
+@dataclass
+class AttributeRuntimeVisibleTypeAnnotations(Attribute):
+    num_annotations: int
+    annotations: list[TypeAnnotation]
+
+
+@dataclass
+class AttributeRuntimeInvisibleTypeAnnotations(Attribute):
+    num_annotations: int
+    annotations: list[TypeAnnotation]
+
+
+@dataclass
+class AttributeAnnotationDefault(Attribute):
+    default_value: ElementValue
+
+
+@dataclass
+class BootstrapMethod:
+    bootstrap_method_ref: int
+    num_bootstrap_arguments: int
+    bootstrap_arguments: list[int]
+
+
+@dataclass
+class AttributeBootstrapMethods(Attribute):
+    num_bootstrap_methods: int
+    bootstrap_methods: list[BootstrapMethod]
+
+
+class MethodParameterFlags(Enum):
+    ACC_FINAL = auto()
+    ACC_SYNTHETIC = auto()
+    ACC_MANDATED = auto()
+
+
+@dataclass
+class MethodParameter:
+    name_index: int
+    access_flags: list[MethodParameterFlags]
+
+
+@dataclass
+class AttributeMethodParameters(Attribute):
+    num_bootstrap_methods: int
+    bootstrap_methods: list[MethodParameter]
 
 
 # --------------------------------------------------
@@ -479,18 +613,45 @@ class AttributeRuntimeVisibleParameterAnnotations(Attribute):
 # --------------------------------------------------
 
 
+class FieldFlags(Enum):
+    ACC_PUBLIC = auto()
+    ACC_PRIVATE = auto()
+    ACC_PROTECTED = auto()
+    ACC_STATIC = auto()
+    ACC_FINAL = auto()
+    ACC_VOLATILE = auto()
+    ACC_TRANSIENT = auto()
+    ACC_SYNTHETIC = auto()
+    ACC_ENUM = auto()
+
+
 @dataclass
 class Field:
-    access_flags: str
+    access_flags: list[FieldFlags]
     name_index: int
     descriptor_index: int
     attributes_count: int
     attribute_info: list[Attribute]
 
 
+class MethodFlags(Enum):
+    ACC_PUBLIC = auto()
+    ACC_PRIVATE = auto()
+    ACC_PROTECTED = auto()
+    ACC_STATIC = auto()
+    ACC_FINAL = auto()
+    ACC_SYNCHRONIZED = auto()
+    ACC_BRIDGE = auto()
+    ACC_VARARGS = auto()
+    ACC_NATIVE = auto()
+    ACC_ABSTRACT = auto()
+    ACC_STRICT = auto()
+    ACC_SYNTHETIC = auto()
+
+
 @dataclass
 class Method:
-    access_flags: str
+    access_flags: list[MethodFlags]
     name_index: int
     descriptor_index: int
     attributes_count: int
