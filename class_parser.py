@@ -18,7 +18,6 @@ def parse(filename):
     if f"{major_version}.{minor_version}" != "52.0":
         file.close()
         raise ClassParseException(f"Failed to parse class {filename}: unsupported major/minor version {major_version}.{minor_version}")
-    print(AttributeConstantValue)
 
     # Parse constant pool
     constant_pool_count = int.from_bytes(file.read(2), byteorder="big")
@@ -79,13 +78,11 @@ def parse(filename):
     for _ in range(attributes_count):
         attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
         attribute_length = int.from_bytes(file.read(4), byteorder="big")
-        info = file.read(attribute_length)
 
-        attribute_info.append(AttributeUnrecognized(
+        attribute_info.append(parse_attribute(AttributeUnparsed(
             attribute_name_index,
-            attribute_length,
-            info
-        ))
+            attribute_length
+        ), file, constant_pool))
 
     # Parsing complete; ready for validation
     # TODO: Class validation
@@ -323,7 +320,7 @@ def parse_attribute(attribute, file, constant_pool):
             int.from_bytes(file.read(2), byteorder="big")
         )
 
-    elif attribute_name == "AttributeSynthetic":
+    elif attribute_name == "Synthetic":
         return AttributeSynthetic()
 
     elif attribute_name == "Signature":
