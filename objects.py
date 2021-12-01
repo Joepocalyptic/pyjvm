@@ -31,10 +31,12 @@ class UninitializedThisVariableInfo(VerificationTypeInfo):
     pass
 
 
+@dataclass
 class ObjectVariableInfo(VerificationTypeInfo):
     cpool_index: int
 
 
+@dataclass
 class UninitializedVariableInfo(VerificationTypeInfo):
     offset: int
 
@@ -45,19 +47,6 @@ class LongVariableInfo(VerificationTypeInfo):
 
 class DoubleVariableInfo(VerificationTypeInfo):
     pass
-
-
-verification_type_union = {
-    0: TopVariableInfo,
-    1: IntegerVariableInfo,
-    2: FloatVariableInfo,
-    3: DoubleVariableInfo,
-    4: LongVariableInfo,
-    5: NullVariableInfo,
-    6: UninitializedThisVariableInfo,
-    7: ObjectVariableInfo,
-    8: UninitializedVariableInfo
-}
 
 
 # --------------------------------------------------
@@ -275,7 +264,7 @@ class AttributeCode(Attribute):
 @dataclass
 class AttributeStackMapTable(Attribute):
     number_of_entries: int
-    stack_map_frame: list[StackMapFrame]
+    entries: list[StackMapFrame]
 
 
 @dataclass
@@ -310,7 +299,6 @@ class AttributeEnclosingMethod(Attribute):
     method_index: int
 
 
-@dataclass
 class AttributeSynthetic(Attribute):
     pass
 
@@ -427,25 +415,14 @@ class StringElementValue(ElementValue):
 
 
 @dataclass
-class EnumValue:
+class EnumElementValue:
     type_name_index: int
     const_name_index: int
 
 
 @dataclass
-class EnumElementValue(ElementValue):
-    const_value_index: int
-
-
-@dataclass
 class ClassElementValue(ElementValue):
     class_info_index: int
-
-
-@dataclass
-class ArrayElementValue(ElementValue):
-    num_values: int
-    values: list[ElementValue]
 
 
 @dataclass
@@ -455,16 +432,46 @@ class ElementValuePair:
 
 
 @dataclass
-class Annotation:
+class Annotation(ElementValue):
     type_index: int
     num_element_value_pairs: int
     element_value_pairs: list[ElementValuePair]
 
 
 @dataclass
+class ArrayElementValue(ElementValue):
+    num_values: int
+    values: list[ElementValue]
+
+
+@dataclass
 class AttributeRuntimeVisibleAnnotations(Attribute):
     num_annotations: int
     annotations: list[Annotation]
+
+
+@dataclass
+class AttributeRuntimeInvisibleAnnotations(Attribute):
+    num_annotations: int
+    annotations: list[Annotation]
+
+
+@dataclass
+class ParameterAnnotations:
+    num_annotations: int
+    annotations: list[Annotation]
+
+
+@dataclass
+class AttributeRuntimeInvisibleParameterAnnotations(Attribute):
+    num_parameters: int
+    parameter_annotations: list[ParameterAnnotations]
+
+
+@dataclass
+class AttributeRuntimeVisibleParameterAnnotations(Attribute):
+    num_parameters: int
+    parameter_annotations: list[ParameterAnnotations]
 
 
 # --------------------------------------------------
