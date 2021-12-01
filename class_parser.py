@@ -18,6 +18,7 @@ def parse(filename):
     if f"{major_version}.{minor_version}" != "52.0":
         file.close()
         raise ClassParseException(f"Failed to parse class {filename}: unsupported major/minor version {major_version}.{minor_version}")
+    print(AttributeConstantValue)
 
     # Parse constant pool
     constant_pool_count = int.from_bytes(file.read(2), byteorder="big")
@@ -64,7 +65,7 @@ def parse(filename):
 
     # Iterate through fields
     while fields_count_iter > 0:
-        fields.append(parse_field_method(file, method=False))
+        fields.append(parse_field_method(file, False, constant_pool))
         fields_count_iter -= 1
 
     # Parse methods
@@ -74,7 +75,7 @@ def parse(filename):
 
     # Iterate through methods
     while methods_count_iter > 0:
-        methods.append(parse_field_method(file, method=True))
+        methods.append(parse_field_method(file, True, constant_pool))
         methods_count_iter -= 1
 
     # Parse class attributes
@@ -88,7 +89,7 @@ def parse(filename):
         attribute_length = int.from_bytes(file.read(4), byteorder="big")
         info = file.read(attribute_length)
 
-        attribute_info.append(Attribute(
+        attribute_info.append(AttributeUnrecognized(
             attribute_name_index,
             attribute_length,
             info
@@ -96,16 +97,28 @@ def parse(filename):
         attributes_count_iter -= 1
 
     # Parsing complete; ready for validation
+    # TODO: Class validation
 
-    print(f"{major_version}.{minor_version}")
-    print(constant_pool_count)
-    for i, constant in enumerate(constant_pool):
-        print(i, constant)
-    print(fields_count, fields)
-    print(methods_count, methods)
-    print(attributes_count, attribute_info)
+    clazz = Class(
+        minor_version,
+        major_version,
+        constant_pool_count,
+        constant_pool,
+        access_flags,
+        this_class,
+        super_class,
+        interfaces_count,
+        interfaces,
+        fields_count,
+        fields,
+        methods_count,
+        methods,
+        attributes_count,
+        attribute_info
+    )
 
     file.close()
+    return clazz
 
 
 def parse_constant_pool_entry(file, constant_type):
@@ -176,7 +189,90 @@ def parse_constant_pool_entry(file, constant_type):
     return None
 
 
-def parse_field_method(file, method):
+def parse_attribute(attribute, file, constant_pool):
+    attribute_name = constant_pool[attribute.attribute_name_index].bytes.decode("utf-8")
+    if attribute_name == "ConstantValue":
+        # ConstantValue
+        return AttributeConstantValue(int.from_bytes(file.read(2), byteorder="big"))
+    elif attribute_name == "Code":
+        # Code
+        max_stack = int.from_bytes(file.read(2), byteorder="big")
+        max_locals = int.from_bytes(file.read(2), byteorder="big")
+        code_length = int.from_bytes(file.read(4), byteorder="big")
+
+        # TODO: Parse bytecode
+        code = file.read(code_length)
+
+        exception_table_length = int.from_bytes(file.read(2), byteorder="big")
+        exception_table = list()
+        exception_table_length_iter = exception_table_length
+
+        while exception_table_length_iter > 0:
+            exception_table.append(ExceptionHandler(
+                int.from_bytes(file.read(2), byteorder="big"),
+                int.from_bytes(file.read(2), byteorder="big"),
+                int.from_bytes(file.read(2), byteorder="big"),
+                int.from_bytes(file.read(2), byteorder="big")
+            ))
+            exception_table_length -= 1
+
+        attributes_count = int.from_bytes(file.read(2), byteorder="big")
+        attributes_count_iter = attributes_count
+        attribute_info = list()
+
+        # Iterate through nested attributes
+        while attributes_count_iter > 0:
+            attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
+            attribute_length = int.from_bytes(file.read(4), byteorder="big")
+
+            attribute_info.append(parse_attribute(AttributeUnparsed(
+                attribute_name_index,
+                attribute_length
+            ), file, constant_pool))
+            attributes_count_iter -= 1
+
+        return AttributeCode(
+            max_stack,
+            max_locals,
+            code_length,
+            code,
+            exception_table_length,
+            exception_table,
+            attributes_count,
+            attribute_info
+        )
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    elif attribute_name == "":
+        return
+    else:
+        # Not in spec; silently ignore and return ambiguous object
+        return AttributeUnrecognized(
+            attribute.attribute_name_index,
+            attribute.attribute_length,
+            file.read(attribute.attribute_length)
+        )
+
+
+def parse_field_method(file, method, constant_pool):
     access_flags = hexlify(file.read(2)).decode("ascii")
     name_index = int.from_bytes(file.read(2), byteorder="big")
     descriptor_index = int.from_bytes(file.read(2), byteorder="big")
@@ -190,13 +286,11 @@ def parse_field_method(file, method):
     while attributes_count_iter > 0:
         attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
         attribute_length = int.from_bytes(file.read(4), byteorder="big")
-        info = file.read(attribute_length)
 
-        attribute_info.append(Attribute(
+        attribute_info.append(parse_attribute(AttributeUnparsed(
             attribute_name_index,
-            attribute_length,
-            info
-        ))
+            attribute_length
+        ), file, constant_pool))
         attributes_count_iter -= 1
 
     return Method(
@@ -215,25 +309,6 @@ def parse_field_method(file, method):
 
 
 def parse_class_flags(mask):
+    # TODO: Parse bit mask properly
     access_flags = list()
-    if mask[0] == '1':
-        access_flags.append(ClassFlags.ACC_SYNTHETIC)
-    elif mask[0] == '2':
-        access_flags.append(ClassFlags.ACC_ANNOTATION)
-    elif mask[0] == '4':
-        access_flags.append(ClassFlags.ACC_ENUM)
-
-    if mask[1] == '2':
-        access_flags.append(ClassFlags.ACC_INTERFACE)
-    elif mask[1] == '4':
-        access_flags.append(ClassFlags.ACC_ABSTRACT)
-
-    if mask[2] == '1':
-        access_flags.append(ClassFlags.ACC_FINAL)
-    elif mask[2] == '2':
-        access_flags.append(ClassFlags.ACC_SUPER)
-
-    if mask[3] == "1":
-        access_flags.append(ClassFlags.ACC_PUBLIC)
-
     return access_flags
