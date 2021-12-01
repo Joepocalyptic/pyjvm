@@ -1,6 +1,7 @@
 import pprint
 
 from class_parser import parse
+from opcodes import *
 
 
 def main():

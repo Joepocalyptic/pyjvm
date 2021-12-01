@@ -5,6 +5,7 @@ from enum import Enum, auto
 # --------------------------------------------------
 # TYPE VERIFICATION
 # --------------------------------------------------
+from opcodes import Opcode
 
 
 class VerificationTypeInfo:
@@ -255,6 +256,7 @@ class AttributeCode(Attribute):
     max_locals: int
     code_length: int
     code: bytes
+    parsed_code: list[Opcode]
     exception_table_length: int
     exception_table: list[ExceptionHandler]
     attributes_count: int

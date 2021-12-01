@@ -1,6 +1,7 @@
 from binascii import hexlify
 from exceptions import ClassParseException
 from objects import *
+from opcodes import opcodes, Opcode
 
 
 def parse(filename):
@@ -169,6 +170,7 @@ def parse_attribute(attribute, file, constant_pool):
 
             # TODO: Parse bytecode
             code = file.read(code_length)
+            parsed_code = parse_bytecode(code)
 
             exception_table_length = int.from_bytes(file.read(2), byteorder="big")
             exception_table = list()
@@ -199,6 +201,7 @@ def parse_attribute(attribute, file, constant_pool):
                 max_locals,
                 code_length,
                 code,
+                parsed_code,
                 exception_table_length,
                 exception_table,
                 attributes_count,
@@ -468,6 +471,11 @@ def parse_attribute(attribute, file, constant_pool):
                 attribute.attribute_length,
                 file.read(attribute.attribute_length)
             )
+
+
+def parse_bytecode(code):
+    print(code)
+    return list()
 
 
 def parse_annotation(file):
