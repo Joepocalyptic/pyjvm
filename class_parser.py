@@ -1,6 +1,5 @@
-import objects
-from exceptions import ClassParseException
 from binascii import hexlify
+from exceptions import ClassParseException
 from objects import *
 
 
@@ -55,7 +54,7 @@ def parse(filename):
 
     # Iterate through superinterfaces
     while interfaces_count_iter > 0:
-        interfaces.append(ConstantClassInfo(int.from_bytes(file.read(2), byteorder="big")))
+        interfaces.append(int.from_bytes(file.read(2), byteorder="big"))
         interfaces_count_iter -= 1
 
     # Parse fields
@@ -65,8 +64,46 @@ def parse(filename):
 
     # Iterate through fields
     while fields_count_iter > 0:
-
+        fields.append(parse_field_method(file, method=False))
         fields_count_iter -= 1
+
+    # Parse methods
+    methods_count = int.from_bytes(file.read(2), byteorder="big")
+    methods_count_iter = methods_count
+    methods = list()
+
+    # Iterate through methods
+    while methods_count_iter > 0:
+        methods.append(parse_field_method(file, method=True))
+        methods_count_iter -= 1
+
+    # Parse class attributes
+    attributes_count = int.from_bytes(file.read(2), byteorder="big")
+    attributes_count_iter = attributes_count
+    attribute_info = list()
+
+    # Iterate through attributes
+    while attributes_count_iter > 0:
+        attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
+        attribute_length = int.from_bytes(file.read(4), byteorder="big")
+        info = file.read(attribute_length)
+
+        attribute_info.append(Attribute(
+            attribute_name_index,
+            attribute_length,
+            info
+        ))
+        attributes_count_iter -= 1
+
+    # Parsing complete; ready for validation
+
+    print(f"{major_version}.{minor_version}")
+    print(constant_pool_count)
+    for i, constant in enumerate(constant_pool):
+        print(i, constant)
+    print(fields_count, fields)
+    print(methods_count, methods)
+    print(attributes_count, attribute_info)
 
     file.close()
 
@@ -137,6 +174,44 @@ def parse_constant_pool_entry(file, constant_type):
             int.from_bytes(file.read(2), byteorder="big")
         )
     return None
+
+
+def parse_field_method(file, method):
+    access_flags = hexlify(file.read(2)).decode("ascii")
+    name_index = int.from_bytes(file.read(2), byteorder="big")
+    descriptor_index = int.from_bytes(file.read(2), byteorder="big")
+
+    # Parse structure attributes
+    attributes_count = int.from_bytes(file.read(2), byteorder="big")
+    attributes_count_iter = attributes_count
+    attribute_info = list()
+
+    # Iterate through attributes
+    while attributes_count_iter > 0:
+        attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
+        attribute_length = int.from_bytes(file.read(4), byteorder="big")
+        info = file.read(attribute_length)
+
+        attribute_info.append(Attribute(
+            attribute_name_index,
+            attribute_length,
+            info
+        ))
+        attributes_count_iter -= 1
+
+    return Method(
+        access_flags,
+        name_index,
+        descriptor_index,
+        attributes_count,
+        attribute_info
+    ) if method else Field(
+        access_flags,
+        name_index,
+        descriptor_index,
+        attributes_count,
+        attribute_info
+    )
 
 
 def parse_class_flags(mask):

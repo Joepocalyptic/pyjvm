@@ -107,11 +107,39 @@ class ConstantInvokeDynamicInfo(ConstantPoolEntry):
 
 
 # --------------------------------------------------
-# FIELDS
+# ATTRIBUTES
 # --------------------------------------------------
 
 
-pass
+@dataclass
+class Attribute:
+    attribute_name_index: int
+    attribute_length: int
+    # bytes[attribute_length]
+    info: bytes
+
+
+# --------------------------------------------------
+# FIELDS & METHODS
+# --------------------------------------------------
+
+
+@dataclass
+class Field:
+    access_flags: str
+    name_index: int
+    descriptor_index: int
+    attributes_count: int
+    attribute_info: list[Attribute]
+
+
+@dataclass
+class Method:
+    access_flags: str
+    name_index: int
+    descriptor_index: int
+    attributes_count: int
+    attribute_info: list[Attribute]
 
 
 # --------------------------------------------------
