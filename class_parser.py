@@ -1,7 +1,8 @@
+import pprint
 from binascii import hexlify
 from exceptions import ClassParseException
 from objects import *
-from opcodes import opcodes, Opcode
+from opcodes import opcodes, Opcode, ParsedOpcode
 
 
 def parse(filename):
@@ -474,8 +475,40 @@ def parse_attribute(attribute, file, constant_pool):
 
 
 def parse_bytecode(code):
-    print(code)
-    return list()
+    operations = dict[int, ParsedOpcode]()
+
+    i = 0
+    while i < len(code):
+        opcode = opcodes[code[i]]
+
+        if code[i] == 170:
+            switches = list()
+            # Byte padding
+            i += i % 4
+
+            default = int.from_bytes(bytes(code[i:i+4]), byteorder="big")
+            i += 4
+
+            low = int.from_bytes(bytes(code[i:i + 4]), byteorder="big")
+            i += 4
+
+            high = int.from_bytes(bytes(code[i:i + 4]), byteorder="big")
+            i += 4
+
+            for _ in range(high-low+1):
+                switches.append(int.from_bytes(bytes(code[i:i + 4]), byteorder="big"))
+                i += 4
+            operations[i] = ParsedOpcode(opcode.func_ref, list(switches))
+        else:
+            params = list()
+
+            for j in range(1, opcode.param_count+1):
+                params.append(code[j+i])
+
+            operations[i] = ParsedOpcode(opcode.func_ref, params)
+            i += opcode.param_count+1 if opcode.param_count > 0 else 1
+
+    return operations
 
 
 def parse_annotation(file):

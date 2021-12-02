@@ -5,7 +5,12 @@ from opcodes import *
 
 
 def main():
-    pprint.pprint(parse("Main.class"))
+    # print("Hello World w/ Fields")
+    # parse("HelloWorld_Fields.class")
+
+    print("TableSwitch")
+    parse("TableSwitch.class")
+    # pprint.pprint(parse("TableSwitch.class"))
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from enum import Enum, auto
+from opcodes import ParsedOpcode
 
 
 # --------------------------------------------------
 # TYPE VERIFICATION
 # --------------------------------------------------
-from opcodes import Opcode
 
 
 class VerificationTypeInfo:
@@ -256,7 +256,7 @@ class AttributeCode(Attribute):
     max_locals: int
     code_length: int
     code: bytes
-    parsed_code: list[Opcode]
+    parsed_code: dict[int, ParsedOpcode]
     exception_table_length: int
     exception_table: list[ExceptionHandler]
     attributes_count: int
