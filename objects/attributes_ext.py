@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from objects import ElementValue, Annotation
+from objects.attributes import ElementValue, Annotation
 
 
 @dataclass

@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 
 
+# --------------------------------------------------
+# DATA STRUCTURES & GLOBALS
+# --------------------------------------------------
+
+
 @dataclass
 class Opcode:
     func_ref: callable
@@ -10,7 +15,7 @@ class Opcode:
 @dataclass
 class ParsedOpcode:
     func_ref: callable
-    params: list[any]
+    params: tuple[any, ...]
 
 
 opcodes = {}
@@ -26,6 +31,11 @@ def opcode(code, param_bytes=0):
         return wrapper
 
     return decorator
+
+# --------------------------------------------------
+# OPCODES
+# Ordered by JVM spec; automatically sorted by decimal representation of opcode byte when inserted to dict
+# --------------------------------------------------
 
 
 @opcode(50)
@@ -878,7 +888,7 @@ def lneg():
     pass
 
 
-# TODO: Fix lookupswitch
+# Variable parameters handled in class_parser
 @opcode(171)
 def lookupswitch():
     pass
@@ -1029,12 +1039,27 @@ def swap():
     pass
 
 
-# TODO: Fix tableswitch
+# Variable parameters handled in class_parser
 @opcode(170)
 def tableswitch():
     pass
 
 
+# Variable parameters handled in class_parser
 @opcode(196, 3)
 def wide():
+    pass
+
+
+@opcode(202)
+def breakpoint_():
+    pass
+
+
+@opcode(254)
+def impdep1():
+    pass
+
+@opcode(255)
+def impdep2():
     pass

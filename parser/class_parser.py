@@ -1,28 +1,41 @@
-import pprint
 from binascii import hexlify
-from exceptions import ClassParseException
-from objects import *
-from opcodes import opcodes, Opcode, ParsedOpcode
+
+from objects.attributes import *
+from objects.attributes_ext import AnnotationElementValue
+from objects.classes import *
+from objects.constant_pool import *
+from objects.errors import VerifyError
+from objects.fields import *
+from objects.methods import *
+from objects.type_verification import *
+from objects.stack_map_frames import *
+
+from opcodes import opcodes, ParsedOpcode
 
 
-def parse(filename):
+# --------------------------------------------------
+# CLASS STRUCTURE
+# --------------------------------------------------
+
+
+def parse_class(filename) -> Class:
     file = open(filename, "rb")
 
     # All valid class files must start with 0xCAFEBABE
-    if hexlify(file.read(4)) != b"cafebabe":
+    if hex_(file.read(4)) != b"cafebabe":
         file.close()
-        raise ClassParseException(f"Failed to parse class: invalid magic number; likely not a class file")
+        raise VerifyError(f"Failed to parse class: invalid magic number; likely not a class file")
 
-    minor_version = int.from_bytes(file.read(2), byteorder="big")
-    major_version = int.from_bytes(file.read(2), byteorder="big")
+    minor_version = uint(file.read(2))
+    major_version = uint(file.read(2))
 
     # Currently only targeting class spec 52.0 (Java SE 8)
     if f"{major_version}.{minor_version}" != "52.0":
         file.close()
-        raise ClassParseException(f"Failed to parse class: unsupported major/minor version {major_version}.{minor_version}")
+        raise VerifyError(f"Failed to parse class: unsupported major/minor version {major_version}.{minor_version}")
 
     # Parse constant pool
-    constant_pool_count = int.from_bytes(file.read(2), byteorder="big")
+    constant_pool_count = uint(file.read(2))
     constant_pool = list()
 
     # noinspection PyTypeChecker
@@ -32,26 +45,26 @@ def parse(filename):
     # Iterate through constant pool
     pool_count = constant_pool_count-1
     for _ in range(pool_count):
-        constant_type = int.from_bytes(file.read(1), byteorder="big")
+        constant_type = uint(file.read(1))
         entry = parse_constant_pool_entry(file, constant_type)
         constant_pool.append(entry)
 
     # Decode access flag mask
     access_flags = parse_class_flags(file)
 
-    this_class = int.from_bytes(file.read(2), byteorder="big")
-    super_class = int.from_bytes(file.read(2), byteorder="big")
+    this_class = uint(file.read(2))
+    super_class = uint(file.read(2))
 
     # Parse superinterfaces
-    interfaces_count = int.from_bytes(file.read(2), byteorder="big")
+    interfaces_count = uint(file.read(2))
     interfaces = list()
 
     # Iterate through superinterfaces
     for _ in range(interfaces_count):
-        interfaces.append(int.from_bytes(file.read(2), byteorder="big"))
+        interfaces.append(uint(file.read(2)))
 
     # Parse fields
-    fields_count = int.from_bytes(file.read(2), byteorder="big")
+    fields_count = uint(file.read(2))
     fields = list()
 
     # Iterate through fields
@@ -59,7 +72,7 @@ def parse(filename):
         fields.append(parse_field_method(file, False, constant_pool))
 
     # Parse methods
-    methods_count = int.from_bytes(file.read(2), byteorder="big")
+    methods_count = uint(file.read(2))
     methods = list()
 
     # Iterate through methods
@@ -67,13 +80,13 @@ def parse(filename):
         methods.append(parse_field_method(file, True, constant_pool))
 
     # Parse class attributes
-    attributes_count = int.from_bytes(file.read(2), byteorder="big")
+    attributes_count = uint(file.read(2))
     attribute_info = list()
 
     # Iterate through attributes
     for _ in range(attributes_count):
-        attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
-        attribute_length = int.from_bytes(file.read(4), byteorder="big")
+        attribute_name_index = uint(file.read(2))
+        attribute_length = uint(file.read(4))
 
         attribute_info.append(parse_attribute(AttributeUnparsed(
             attribute_name_index,
@@ -108,7 +121,7 @@ def parse(filename):
 def parse_constant_pool_entry(file, constant_type):
     match constant_type:
         case 1:
-            length = int.from_bytes(file.read(2), byteorder="big")
+            length = uint(file.read(2))
             return ConstantUtf8Info(length, file.read(length))
         case 3:
             return ConstantIntegerInfo(file.read(4))
@@ -119,78 +132,81 @@ def parse_constant_pool_entry(file, constant_type):
         case 6:
             return ConstantLongInfo(file.read(4), file.read(4))
         case 7:
-            return ConstantClassInfo(int.from_bytes(file.read(2), byteorder="big"))
+            return ConstantClassInfo(uint(file.read(2)))
         case 8:
-            return ConstantStringInfo(int.from_bytes(file.read(2), byteorder="big"))
+            return ConstantStringInfo(uint(file.read(2)))
         case 9:
             return ConstantFieldrefInfo(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
         case 10:
             return ConstantMethodrefInfo(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
         case 11:
             return ConstantInterfaceMethodrefInfo(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
         case 12:
             return ConstantNameAndTypeInfo(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
         case 15:
             return ConstantMethodHandleInfo(
-                int.from_bytes(file.read(1), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(1)),
+                uint(file.read(2))
             )
         case 16:
-            return ConstantMethodTypeInfo(int.from_bytes(file.read(2), byteorder="big"))
+            return ConstantMethodTypeInfo(uint(file.read(2)))
         case 18:
             return ConstantInvokeDynamicInfo(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
         case _:
-            raise ClassParseException(f"Failed to parse class: invalid constant type {constant_type}")
+            raise VerifyError(f"Failed to parse class: invalid constant type {constant_type}")
+
+
+# --------------------------------------------------
+# ATTRIBUTES
+# --------------------------------------------------
 
 
 def parse_attribute(attribute, file, constant_pool):
     attribute_name = constant_pool[attribute.attribute_name_index].bytes.decode("utf-8")
     match attribute_name:
         case "ConstantValue":
-            return AttributeConstantValue(int.from_bytes(file.read(2), byteorder="big"))
+            return AttributeConstantValue(uint(file.read(2)))
 
         case "Code":
-            max_stack = int.from_bytes(file.read(2), byteorder="big")
-            max_locals = int.from_bytes(file.read(2), byteorder="big")
-            code_length = int.from_bytes(file.read(4), byteorder="big")
+            max_stack = uint(file.read(2))
+            max_locals = uint(file.read(2))
+            code_length = uint(file.read(4))
 
-            # TODO: Parse bytecode
-            code = file.read(code_length)
-            parsed_code = parse_bytecode(code)
+            code = parse_bytecode(file.read(code_length))
 
-            exception_table_length = int.from_bytes(file.read(2), byteorder="big")
+            exception_table_length = uint(file.read(2))
             exception_table = list()
 
             for _ in range(exception_table_length):
                 exception_table.append(ExceptionHandler(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
-            attributes_count = int.from_bytes(file.read(2), byteorder="big")
+            attributes_count = uint(file.read(2))
             attribute_info = list()
 
             # Iterate through nested attributes
             for _ in range(attributes_count):
-                attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
-                attribute_length = int.from_bytes(file.read(4), byteorder="big")
+                attribute_name_index = uint(file.read(2))
+                attribute_length = uint(file.read(4))
 
                 attribute_info.append(parse_attribute(AttributeUnparsed(
                     attribute_name_index,
@@ -202,7 +218,6 @@ def parse_attribute(attribute, file, constant_pool):
                 max_locals,
                 code_length,
                 code,
-                parsed_code,
                 exception_table_length,
                 exception_table,
                 attributes_count,
@@ -210,36 +225,47 @@ def parse_attribute(attribute, file, constant_pool):
             )
 
         case "StackMapTable":
-            number_of_entries = int.from_bytes(file.read(2), byteorder="big")
+            number_of_entries = uint(file.read(2))
             entries = list()
 
             for _ in range(number_of_entries):
-                tag = int.from_bytes(file.read(1), byteorder="big")
+                tag = uint(file.read(1))
                 match tag:
+                    # SameFrame
                     case tag if tag in range(0, 64):
                         entries.append(SameFrame(tag))
+
+                    # SameLocals1StackItemFrame
                     case tag if tag in range(64, 128):
                         stack = list()
                         stack.append(parse_verification_type_info(file))
 
                         entries.append(SameLocals1StackItemFrame(tag, stack))
+
+                    # SameLocals1StackItemFrameExtended
                     case tag if tag == 247:
-                        offset_delta = int.from_bytes(file.read(2), byteorder="big")
+                        offset_delta = uint(file.read(2))
 
                         stack = list()
                         stack.append(parse_verification_type_info(file))
 
                         entries.append(SameLocals1StackItemFrameExtended(tag, offset_delta, stack))
+
+                    # ChopFrame
                     case tag if tag in range(248, 251):
-                        offset_delta = int.from_bytes(file.read(2), byteorder="big")
+                        offset_delta = uint(file.read(2))
 
                         entries.append(ChopFrame(tag, offset_delta))
+
+                    # SameFrameExtended
                     case tag if tag == 251:
-                        offset_delta = int.from_bytes(file.read(2), byteorder="big")
+                        offset_delta = uint(file.read(2))
 
                         entries.append(SameFrameExtended(tag, offset_delta))
+
+                    # AppendFrame
                     case tag if tag in range(252, 255):
-                        offset_delta = int.from_bytes(file.read(2), byteorder="big")
+                        offset_delta = uint(file.read(2))
 
                         localz = list()
                         for _ in range(tag-251):
@@ -247,15 +273,17 @@ def parse_attribute(attribute, file, constant_pool):
                             localz.append(parse_verification_type_info(file))
 
                         entries.append(AppendFrame(tag, offset_delta, localz))
-                    case tag if tag == 255:
-                        offset_delta = int.from_bytes(file.read(2), byteorder="big")
 
-                        number_of_locals = int.from_bytes(file.read(2), byteorder="big")
+                    # FullFrame
+                    case tag if tag == 255:
+                        offset_delta = uint(file.read(2))
+
+                        number_of_locals = uint(file.read(2))
                         localz = list()
                         for _ in range(number_of_locals):
                             localz.append(parse_verification_type_info(file))
 
-                        number_of_stack_items = int.from_bytes(file.read(2), byteorder="big")
+                        number_of_stack_items = uint(file.read(2))
                         stack = list()
                         for _ in range(number_of_stack_items):
                             stack.append(parse_verification_type_info(file))
@@ -268,38 +296,40 @@ def parse_attribute(attribute, file, constant_pool):
                             number_of_stack_items,
                             stack
                         ))
+
+                    # Not in spec
                     case _:
-                        raise ClassParseException(f"Failed to parse class: invalid StackMapTable union tag {tag}")
+                        raise VerifyError(f"Failed to parse class: invalid StackMapTable union tag {tag}")
 
             return AttributeStackMapTable(number_of_entries, entries)
 
         case "Exceptions":
-            number_of_exceptions = int.from_bytes(file.read(2), byteorder="big")
+            number_of_exceptions = uint(file.read(2))
             exception_index_table = list()
 
             for _ in range(number_of_exceptions):
-                exception_index_table.append(int.from_bytes(file.read(2), byteorder="big"))
+                exception_index_table.append(uint(file.read(2)))
 
             return AttributeExceptions(number_of_exceptions, exception_index_table)
 
         case "InnerClasses":
-            number_of_classes = int.from_bytes(file.read(2), byteorder="big")
+            number_of_classes = uint(file.read(2))
             classes = list()
 
             for _ in range(number_of_classes):
                 classes.append(InnerClassEntry(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
             return AttributeInnerClasses(number_of_classes, classes)
 
         case "EnclosingMethod":
             return AttributeEnclosingMethod(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
 
         case "Synthetic":
@@ -308,55 +338,55 @@ def parse_attribute(attribute, file, constant_pool):
         case "Signature":
             # TODO: Parse signatures
             return AttributeSignature(
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2))
             )
 
         case "SourceFile":
             return AttributeSourceFile(
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2))
             )
 
         case "SourceDebugExtension":
             return AttributeSourceDebugExtension(file.read(attribute.attribute_length))
 
         case "LineNumberTable":
-            line_number_table_length = int.from_bytes(file.read(2), byteorder="big")
+            line_number_table_length = uint(file.read(2))
             line_number_table = list()
 
             for _ in range(line_number_table_length):
                 line_number_table.append(LineNumber(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
             return AttributeLineNumberTable(line_number_table_length, line_number_table)
 
         case "LocalVariableTable":
-            local_variable_table_length = int.from_bytes(file.read(2), byteorder="big")
+            local_variable_table_length = uint(file.read(2))
             local_variable_table = list()
 
             for _ in range(local_variable_table_length):
                 local_variable_table.append(LocalVariable(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
             return AttributeLocalVariableTable(local_variable_table_length, local_variable_table)
 
         case "LocalVariableTypeTable":
-            local_variable_type_table_length = int.from_bytes(file.read(2), byteorder="big")
+            local_variable_type_table_length = uint(file.read(2))
             local_variable_type_table = list()
 
             for _ in range(local_variable_type_table_length):
                 local_variable_type_table.append(LocalVariableType(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
             return AttributeLocalVariableTypeTable(local_variable_type_table_length, local_variable_type_table)
@@ -365,7 +395,7 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeDeprecated()
 
         case "RuntimeVisibleAnnotations":
-            num_annotations = int.from_bytes(file.read(2), byteorder="big")
+            num_annotations = uint(file.read(2))
             annotations = list()
 
             for _ in range(num_annotations):
@@ -374,7 +404,7 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeVisibleAnnotations(num_annotations, annotations)
 
         case "RuntimeInvisibleAnnotations":
-            num_annotations = int.from_bytes(file.read(2), byteorder="big")
+            num_annotations = uint(file.read(2))
             annotations = list()
 
             for _ in range(num_annotations):
@@ -383,11 +413,11 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeInvisibleAnnotations(num_annotations, annotations)
 
         case "RuntimeVisibleParameterAnnotations":
-            num_parameters = int.from_bytes(file.read(2), byteorder="big")
+            num_parameters = uint(file.read(2))
             parameter_annotations = list()
 
             for _ in range(num_parameters):
-                num_annotations = int.from_bytes(file.read(2), byteorder="big")
+                num_annotations = uint(file.read(2))
                 annotations = list()
 
                 for _ in range(num_annotations):
@@ -398,11 +428,11 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeVisibleParameterAnnotations(num_parameters, parameter_annotations)
 
         case "RuntimeInvisibleParameterAnnotations":
-            num_parameters = int.from_bytes(file.read(2), byteorder="big")
+            num_parameters = uint(file.read(2))
             parameter_annotations = list()
 
             for _ in range(num_parameters):
-                num_annotations = int.from_bytes(file.read(2), byteorder="big")
+                num_annotations = uint(file.read(2))
                 annotations = list()
 
                 for _ in range(num_annotations):
@@ -413,7 +443,7 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeInvisibleParameterAnnotations(num_parameters, parameter_annotations)
 
         case "RuntimeVisibleTypeAnnotations":
-            num_annotations = int.from_bytes(file.read(2), byteorder="big")
+            num_annotations = uint(file.read(2))
             annotations = list()
 
             for _ in range(num_annotations):
@@ -422,7 +452,7 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeVisibleTypeAnnotations(num_annotations, annotations)
 
         case "RuntimeInvisibleTypeAnnotations":
-            num_annotations = int.from_bytes(file.read(2), byteorder="big")
+            num_annotations = uint(file.read(2))
             annotations = list()
 
             for _ in range(num_annotations):
@@ -434,16 +464,16 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeAnnotationDefault(parse_element_value(file))
 
         case "BootstrapMethods":
-            num_bootstrap_methods = int.from_bytes(file.read(2), byteorder="big")
+            num_bootstrap_methods = uint(file.read(2))
             bootstrap_methods = list()
 
             for _ in range(num_bootstrap_methods):
-                bootstrap_method_ref = int.from_bytes(file.read(2), byteorder="big")
-                num_bootstrap_arguments = int.from_bytes(file.read(2), byteorder="big")
+                bootstrap_method_ref = uint(file.read(2))
+                num_bootstrap_arguments = uint(file.read(2))
                 bootstrap_arguments = list()
 
                 for _ in range(num_bootstrap_arguments):
-                    bootstrap_arguments.append(int.from_bytes(file.read(2), byteorder="big"))
+                    bootstrap_arguments.append(uint(file.read(2)))
 
                 bootstrap_methods.append(BootstrapMethod(
                     bootstrap_method_ref,
@@ -454,12 +484,12 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeBootstrapMethods(num_bootstrap_methods, bootstrap_methods)
 
         case "MethodParameters":
-            parameters_count = int.from_bytes(file.read(1), byteorder="big")
+            parameters_count = uint(file.read(1))
             parameters = list()
 
             for _ in range(parameters_count):
                 parameters.append(MethodParameter(
-                    int.from_bytes(file.read(2), byteorder="big"),
+                    uint(file.read(2)),
                     parse_method_parameter_flags(file)
                 ))
 
@@ -479,45 +509,98 @@ def parse_bytecode(code):
 
     i = 0
     while i < len(code):
-        opcode = opcodes[code[i]]
+        try:
+            opcode = opcodes[code[i]]
+        except IndexError:
+            raise VerifyError(f"Failed to parse class: unknown opcode {code[i]}")
 
-        if code[i] == 170:
-            switches = list()
-            # Byte padding
-            i += i % 4
+        match code[i]:
+            # VARIABLE LENGTH
 
-            default = int.from_bytes(bytes(code[i:i+4]), byteorder="big")
-            i += 4
+            # tableswitch (170; 0xaa)
+            case 170:
+                i_initial = i
+                switches = list()
 
-            low = int.from_bytes(bytes(code[i:i + 4]), byteorder="big")
-            i += 4
+                # Byte padding
+                i += i % 4
 
-            high = int.from_bytes(bytes(code[i:i + 4]), byteorder="big")
-            i += 4
-
-            for _ in range(high-low+1):
-                switches.append(int.from_bytes(bytes(code[i:i + 4]), byteorder="big"))
+                default = uint(bytes(code[i:i + 4]), signed=True)
                 i += 4
-            operations[i] = ParsedOpcode(opcode.func_ref, list(switches))
-        else:
-            params = list()
 
-            for j in range(1, opcode.param_count+1):
-                params.append(code[j+i])
+                low = uint(bytes(code[i:i + 4]), signed=True)
+                i += 4
 
-            operations[i] = ParsedOpcode(opcode.func_ref, params)
-            i += opcode.param_count+1 if opcode.param_count > 0 else 1
+                high = uint(bytes(code[i:i + 4]), signed=True)
+                i += 4
+
+                for _ in range(high - low + 1):
+                    switches.append(uint(bytes(code[i:i + 4]), signed=True))
+                    i += 4
+
+                operations[i_initial] = ParsedOpcode(opcode.func_ref, (default, tuple(switches)))
+
+            # tableswitch (171; 0xab)
+            case 171:
+                i_initial = i
+                switches = dict[int, int]()
+
+                # Byte padding
+                i += i % 4
+
+                default = uint(bytes(code[i:i + 4]), signed=True)
+                i += 4
+
+                npairs = uint(bytes(code[i:i + 4]), signed=True)
+                i += 4
+
+                for _ in range(npairs):
+                    match = uint(bytes(code[i:i + 4]), signed=True)
+                    i += 4
+                    offset = uint(bytes(code[i:i + 4]), signed=True)
+                    i += 4
+
+                    switches[match] = offset
+
+                operations[i_initial] = ParsedOpcode(opcode.func_ref, (default, tuple(switches)))
+
+            # wide (196; 0xc4)
+            case 196:
+                i_initial = i
+                params = list()
+
+                i += 1
+                mod_opcode = code[i]
+
+                # Handle iinc
+                param_count = 4 if mod_opcode == 132 else 2
+                for j in range(1, param_count + 1):
+                    params.append(code[i+j])
+                i += param_count
+
+                operations[i_initial] = ParsedOpcode(opcode.func_ref, (tuple(params)))
+
+            # CONSTANT-LENGTH
+
+            case _:
+                params = list()
+
+                for j in range(1, opcode.param_count + 1):
+                    params.append(code[i+j])
+
+                operations[i] = ParsedOpcode(opcode.func_ref, (tuple(params)))
+                i += opcode.param_count + 1 if opcode.param_count > 0 else 1
 
     return operations
 
 
 def parse_annotation(file):
-    type_index = int.from_bytes(file.read(2), byteorder="big")
-    num_element_value_pairs = int.from_bytes(file.read(2), byteorder="big")
+    type_index = uint(file.read(2))
+    num_element_value_pairs = uint(file.read(2))
     element_value_pairs = list()
 
     for _ in range(num_element_value_pairs):
-        element_name_index = int.from_bytes(file.read(2), byteorder="big")
+        element_name_index = uint(file.read(2))
         element_value = parse_element_value(file)
 
         element_value_pairs.append(ElementValuePair(element_name_index, element_value))
@@ -529,52 +612,52 @@ def parse_typeannotation(file):
     target_type = hexlify(file.read(1)).decode("ascii")
 
     match target_type:
-        case "00" | "01": target_info = TypeParameterTarget(int.from_bytes(file.read(2), byteorder="big"))
-        case "10": target_info = SupertypeTarget(int.from_bytes(file.read(2), byteorder="big"))
+        case "00" | "01": target_info = TypeParameterTarget(uint(file.read(2)))
+        case "10": target_info = SupertypeTarget(uint(file.read(2)))
         case "11" | "12": target_info = TypeParameterBoundTarget(
-                int.from_bytes(file.read(1), byteorder="big"),
-                int.from_bytes(file.read(1), byteorder="big")
+                uint(file.read(1)),
+                uint(file.read(1))
             )
         case "13" | "14" | "15": target_info = EmptyTarget()
-        case "16": target_info = FormalParameterTarget(int.from_bytes(file.read(1), byteorder="big"))
-        case "17": target_info = ThrowsTarget(int.from_bytes(file.read(2), byteorder="big"))
+        case "16": target_info = FormalParameterTarget(uint(file.read(1)))
+        case "17": target_info = ThrowsTarget(uint(file.read(2)))
         case "40" | "41":
-            table_length = int.from_bytes(file.read(2), byteorder="big")
+            table_length = uint(file.read(2))
             table = list()
 
             for _ in range(table_length):
                 table.append(LocalvarInfo(
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big"),
-                    int.from_bytes(file.read(2), byteorder="big")
+                    uint(file.read(2)),
+                    uint(file.read(2)),
+                    uint(file.read(2))
                 ))
 
             target_info = LocalvarTarget(table_length, table)
-        case "42": target_info = CatchTarget(int.from_bytes(file.read(2), byteorder="big"))
-        case "43" | "44" | "45" | "46": target_info = OffsetTarget(int.from_bytes(file.read(2), byteorder="big"))
+        case "42": target_info = CatchTarget(uint(file.read(2)))
+        case "43" | "44" | "45" | "46": target_info = OffsetTarget(uint(file.read(2)))
         case "47" | "48" | "49" | "4A" | "4B": target_info = TypeArgumentTarget(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(1), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(1))
             )
         case _:
-            raise ClassParseException(f"Failed to parse class: invalid target_type '{target_type}' in type annotation")
+            raise VerifyError(f"Failed to parse class: invalid target_type '{target_type}' in type annotation")
 
-    path_length = int.from_bytes(file.read(1), byteorder="big")
+    path_length = uint(file.read(1))
     path = list()
 
     for _ in range(path_length):
         path.append(PathStep(
-            int.from_bytes(file.read(1), byteorder="big"),
-            int.from_bytes(file.read(1), byteorder="big")
+            uint(file.read(1)),
+            uint(file.read(1))
         ))
 
     target_path = TypePath(path_length, path)
-    type_index = int.from_bytes(file.read(2), byteorder="big")
-    num_element_value_pairs = int.from_bytes(file.read(2), byteorder="big")
+    type_index = uint(file.read(2))
+    num_element_value_pairs = uint(file.read(2))
     element_value_pairs = list()
 
     for _ in range(num_element_value_pairs):
-        element_name_index = int.from_bytes(file.read(2), byteorder="big")
+        element_name_index = uint(file.read(2))
         element_value = parse_element_value(file)
 
         element_value_pairs.append(ElementValuePair(element_name_index, element_value))
@@ -589,38 +672,38 @@ def parse_typeannotation(file):
     )
 
 
-def parse_element_value(file):
+def parse_element_value(file) -> ElementValue:
     tag = file.read(1).decode("ascii")
     match tag:
-        case "B": return ByteElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "C": return CharElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "D": return DoubleElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "F": return FloatElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "I": return IntElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "J": return LongElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "S": return ShortElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "Z": return ByteElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "s": return StringElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "s": return StringElementValue(int.from_bytes(file.read(2), byteorder="big"))
+        case "B": return ByteElementValue(uint(file.read(2)))
+        case "C": return CharElementValue(uint(file.read(2)))
+        case "D": return DoubleElementValue(uint(file.read(2)))
+        case "F": return FloatElementValue(uint(file.read(2)))
+        case "I": return IntElementValue(uint(file.read(2)))
+        case "J": return LongElementValue(uint(file.read(2)))
+        case "S": return ShortElementValue(uint(file.read(2)))
+        case "Z": return ByteElementValue(uint(file.read(2)))
+        case "s": return StringElementValue(uint(file.read(2)))
+        case "s": return StringElementValue(uint(file.read(2)))
         case "e": return EnumElementValue(
-                int.from_bytes(file.read(2), byteorder="big"),
-                int.from_bytes(file.read(2), byteorder="big")
+                uint(file.read(2)),
+                uint(file.read(2))
             )
-        case "c": return ClassElementValue(int.from_bytes(file.read(2), byteorder="big"))
-        case "@": return parse_annotation(file)
+        case "c": return ClassElementValue(uint(file.read(2)))
+        case "@": return AnnotationElementValue(parse_annotation(file))
         case "[":
-            num_values = int.from_bytes(file.read(2), byteorder="big")
+            num_values = uint(file.read(2))
             values = list()
 
             for _ in range(num_values):
                 values.append(parse_element_value(file))
 
             return ArrayElementValue(num_values, values)
-        case _: raise ClassParseException(f"Failed to parse class: invalid element value union tag {tag}")
+        case _: raise VerifyError(f"Failed to parse class: invalid element value union tag {tag}")
 
 
-def parse_verification_type_info(file):
-    tag = int.from_bytes(file.read(1), byteorder="big")
+def parse_verification_type_info(file) -> VerificationTypeInfo:
+    tag = uint(file.read(1))
     match tag:
         case 0: return TopVariableInfo()
         case 1: return IntegerVariableInfo()
@@ -629,24 +712,29 @@ def parse_verification_type_info(file):
         case 4: return LongVariableInfo()
         case 5: return NullVariableInfo()
         case 6: return UninitializedThisVariableInfo()
-        case 7: return ObjectVariableInfo(int.from_bytes(file.read(2), byteorder="big"))
-        case 8: return UninitializedVariableInfo(int.from_bytes(file.read(2), byteorder="big"))
-        case _: raise ClassParseException(f"Failed to parse class: invalid verification type union tag {tag}")
+        case 7: return ObjectVariableInfo(uint(file.read(2)))
+        case 8: return UninitializedVariableInfo(uint(file.read(2)))
+        case _: raise VerifyError(f"Failed to parse class: invalid verification type union tag {tag}")
 
 
-def parse_field_method(file, method, constant_pool):
+# --------------------------------------------------
+# FIELDS & METHODS
+# --------------------------------------------------
+
+
+def parse_field_method(file, method, constant_pool) -> Field | Method:
     access_flags = parse_method_flags(file) if method else parse_field_flags(file)
-    name_index = int.from_bytes(file.read(2), byteorder="big")
-    descriptor_index = int.from_bytes(file.read(2), byteorder="big")
+    name_index = uint(file.read(2))
+    descriptor_index = uint(file.read(2))
 
     # Parse structure attributes
-    attributes_count = int.from_bytes(file.read(2), byteorder="big")
+    attributes_count = uint(file.read(2))
     attribute_info = list()
 
     # Iterate through attributes
     for _ in range(attributes_count):
-        attribute_name_index = int.from_bytes(file.read(2), byteorder="big")
-        attribute_length = int.from_bytes(file.read(4), byteorder="big")
+        attribute_name_index = uint(file.read(2))
+        attribute_length = uint(file.read(4))
 
         attribute_info.append(parse_attribute(AttributeUnparsed(
             attribute_name_index,
@@ -668,7 +756,12 @@ def parse_field_method(file, method, constant_pool):
     )
 
 
-def parse_class_flags(file):
+# --------------------------------------------------
+# ACCESS FLAGS
+# --------------------------------------------------
+
+
+def parse_class_flags(file) -> list[ClassFlags]:
     # TODO: Parse bit mask properly
     # hexlify(file.read(2)).decode("ascii")
     file.read(2)
@@ -676,21 +769,34 @@ def parse_class_flags(file):
     return access_flags
 
 
-def parse_method_flags(file):
+def parse_method_flags(file) -> list[MethodFlags]:
     # hexlify(file.read(2)).decode("ascii")
     file.read(2)
     access_flags = list()
     return access_flags
 
 
-def parse_field_flags(file):
+def parse_field_flags(file)-> list[FieldFlags]:
     # hexlify(file.read(2)).decode("ascii")
     file.read(2)
     access_flags = list()
     return access_flags
 
 
-def parse_method_parameter_flags(file):
+def parse_method_parameter_flags(file) -> list[MethodParameterFlags]:
     file.read(2)
     access_flags = list()
     return access_flags
+
+
+# --------------------------------------------------
+# DATA TYPES
+# --------------------------------------------------
+
+
+def uint(bytez, signed=False) -> int:
+    return int.from_bytes(bytez, byteorder="big", signed=signed)
+
+
+def hex_(bytez) -> bytes:
+    return hexlify(bytez)
