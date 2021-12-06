@@ -1,5 +1,5 @@
 from dataclasses import dataclass, Field
-from enum import Enum, auto
+from enum import Enum
 
 from objects.attributes import Attribute
 from objects.constant_pool import ConstantPoolEntry
@@ -7,14 +7,14 @@ from objects.methods import Method
 
 
 class ClassFlags(Enum):
-    ACC_PUBLIC = auto()
-    ACC_FINAL = auto()
-    ACC_SUPER = auto()
-    ACC_INTERFACE = auto()
-    ACC_ABSTRACT = auto()
-    ACC_SYNTHETIC = auto()
-    ACC_ANNOTATION = auto()
-    ACC_ENUM = auto()
+    ACC_PUBLIC = b'0001'
+    ACC_SUPER = b'0020'
+    ACC_FINAL = b'0010'
+    ACC_INTERFACE = b'0200'
+    ACC_ABSTRACT = b'0400'
+    ACC_SYNTHETIC = b'1000'
+    ACC_ANNOTATION = b'2000'
+    ACC_ENUM = b'4000'
 
 
 @dataclass

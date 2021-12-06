@@ -5,15 +5,15 @@ from objects.attributes import Attribute
 
 
 class FieldFlags(Enum):
-    ACC_PUBLIC = auto()
-    ACC_PRIVATE = auto()
-    ACC_PROTECTED = auto()
-    ACC_STATIC = auto()
-    ACC_FINAL = auto()
-    ACC_VOLATILE = auto()
-    ACC_TRANSIENT = auto()
-    ACC_SYNTHETIC = auto()
-    ACC_ENUM = auto()
+    ACC_PUBLIC = b'0001'
+    ACC_PRIVATE = b'0002'
+    ACC_PROTECTED = b'0004'
+    ACC_STATIC = b'0008'
+    ACC_FINAL = b'0010'
+    ACC_VOLATILE = b'0040'
+    ACC_TRANSIENT = b'0080'
+    ACC_SYNTHETIC = b'1000'
+    ACC_ENUM = b'4000'
 
 
 @dataclass

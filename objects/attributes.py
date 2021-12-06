@@ -66,12 +66,26 @@ class AttributeExceptions(Attribute):
     exception_index_table: list[int]
 
 
+class InnerClassAccessFlags(Enum):
+    ACC_PUBLIC = b'0001'
+    ACC_PRIVATE = b'0002'
+    ACC_PROTECTED = b'0004'
+    ACC_STATIC = b'0008'
+    ACC_FINAL = b'0010'
+    ACC_INTERFACE = b'0200'
+    ACC_ABSTRACT = b'0400'
+    ACC_SYNTHETIC = b'1000'
+    ACC_ANNOTATION = b'2000'
+    ACC_ENUM = b'4000'
+
+
+
 @dataclass
 class InnerClassEntry:
     inner_class_info_index: int
     outer_class_info_index: int
     inner_name_index: int
-    inner_class_access_flags: int
+    inner_class_access_flags: list[InnerClassAccessFlags]
 
 
 @dataclass
@@ -378,9 +392,9 @@ class AttributeBootstrapMethods(Attribute):
 
 
 class MethodParameterFlags(Enum):
-    ACC_FINAL = auto()
-    ACC_SYNTHETIC = auto()
-    ACC_MANDATED = auto()
+    ACC_FINAL = b'0010'
+    ACC_SYNTHETIC = b'1000'
+    ACC_MANDATED = b'8000'
 
 
 @dataclass

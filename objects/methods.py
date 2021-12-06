@@ -5,18 +5,18 @@ from objects.attributes import Attribute
 
 
 class MethodFlags(Enum):
-    ACC_PUBLIC = auto()
-    ACC_PRIVATE = auto()
-    ACC_PROTECTED = auto()
-    ACC_STATIC = auto()
-    ACC_FINAL = auto()
-    ACC_SYNCHRONIZED = auto()
-    ACC_BRIDGE = auto()
-    ACC_VARARGS = auto()
-    ACC_NATIVE = auto()
-    ACC_ABSTRACT = auto()
-    ACC_STRICT = auto()
-    ACC_SYNTHETIC = auto()
+    ACC_PUBLIC = b'0001'
+    ACC_PRIVATE = b'0002'
+    ACC_PROTECTED = b'0004'
+    ACC_STATIC = b'0008'
+    ACC_FINAL = b'0010'
+    ACC_SYNCHRONIZED = b'0020'
+    ACC_BRIDGE = b'0040'
+    ACC_VARARGS = b'0080'
+    ACC_NATIVE = b'0100'
+    ACC_ABSTRACT = b'0400'
+    ACC_STRICT = b'0800'
+    ACC_SYNTHETIC = b'1000'
 
 
 @dataclass

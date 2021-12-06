@@ -4,11 +4,11 @@ from objects.attributes import *
 from objects.attributes_ext import AnnotationElementValue
 from objects.classes import *
 from objects.constant_pool import *
-from objects.errors import VerifyError
+from objects.errors import ClassFormatError, UnsupportedClassVersionError
 from objects.fields import *
 from objects.methods import *
-from objects.type_verification import *
 from objects.stack_map_frames import *
+from objects.type_verification import *
 
 from opcodes import opcodes, ParsedOpcode
 
@@ -24,7 +24,7 @@ def parse_class(filename) -> Class:
     # All valid class files must start with 0xCAFEBABE
     if hex_(file.read(4)) != b"cafebabe":
         file.close()
-        raise VerifyError(f"Failed to parse class: invalid magic number; likely not a class file")
+        raise ClassFormatError(f"Failed to parse class: invalid magic number; likely not a class file")
 
     minor_version = uint(file.read(2))
     major_version = uint(file.read(2))
@@ -32,7 +32,7 @@ def parse_class(filename) -> Class:
     # Currently only targeting class spec 52.0 (Java SE 8)
     if f"{major_version}.{minor_version}" != "52.0":
         file.close()
-        raise VerifyError(f"Failed to parse class: unsupported major/minor version {major_version}.{minor_version}")
+        raise UnsupportedClassVersionError(f"Failed to parse class: unsupported major/minor version {major_version}.{minor_version}")
 
     # Parse constant pool
     constant_pool_count = uint(file.read(2))
@@ -50,7 +50,7 @@ def parse_class(filename) -> Class:
         constant_pool.append(entry)
 
     # Decode access flag mask
-    access_flags = parse_class_flags(file)
+    access_flags = parse_access_flags(file, ClassFlags)
 
     this_class = uint(file.read(2))
     super_class = uint(file.read(2))
@@ -123,18 +123,12 @@ def parse_constant_pool_entry(file, constant_type):
         case 1:
             length = uint(file.read(2))
             return ConstantUtf8Info(length, file.read(length))
-        case 3:
-            return ConstantIntegerInfo(file.read(4))
-        case 4:
-            return ConstantFloatInfo(file.read(4))
-        case 5:
-            return ConstantLongInfo(file.read(4), file.read(4))
-        case 6:
-            return ConstantLongInfo(file.read(4), file.read(4))
-        case 7:
-            return ConstantClassInfo(uint(file.read(2)))
-        case 8:
-            return ConstantStringInfo(uint(file.read(2)))
+        case 3: return ConstantIntegerInfo(file.read(4))
+        case 4: return ConstantFloatInfo(file.read(4))
+        case 5: return ConstantLongInfo(file.read(4), file.read(4))
+        case 6: return ConstantDoubleInfo(file.read(4), file.read(4))
+        case 7: return ConstantClassInfo(uint(file.read(2)))
+        case 8: return ConstantStringInfo(uint(file.read(2)))
         case 9:
             return ConstantFieldrefInfo(
                 uint(file.read(2)),
@@ -160,15 +154,14 @@ def parse_constant_pool_entry(file, constant_type):
                 uint(file.read(1)),
                 uint(file.read(2))
             )
-        case 16:
-            return ConstantMethodTypeInfo(uint(file.read(2)))
+        case 16: return ConstantMethodTypeInfo(uint(file.read(2)))
         case 18:
             return ConstantInvokeDynamicInfo(
                 uint(file.read(2)),
                 uint(file.read(2))
             )
         case _:
-            raise VerifyError(f"Failed to parse class: invalid constant type {constant_type}")
+            raise ClassFormatError(f"Failed to parse class: invalid constant type {constant_type}")
 
 
 # --------------------------------------------------
@@ -269,7 +262,7 @@ def parse_attribute(attribute, file, constant_pool):
 
                         localz = list()
                         for _ in range(tag-251):
-                            # TODO: Double and long might need special treatment
+                            # Double and long might need special treatment
                             localz.append(parse_verification_type_info(file))
 
                         entries.append(AppendFrame(tag, offset_delta, localz))
@@ -299,7 +292,7 @@ def parse_attribute(attribute, file, constant_pool):
 
                     # Not in spec
                     case _:
-                        raise VerifyError(f"Failed to parse class: invalid StackMapTable union tag {tag}")
+                        raise ClassFormatError(f"Failed to parse class: invalid StackMapTable union tag {tag}")
 
             return AttributeStackMapTable(number_of_entries, entries)
 
@@ -490,7 +483,7 @@ def parse_attribute(attribute, file, constant_pool):
             for _ in range(parameters_count):
                 parameters.append(MethodParameter(
                     uint(file.read(2)),
-                    parse_method_parameter_flags(file)
+                    parse_access_flags(file, MethodParameterFlags)
                 ))
 
             return AttributeMethodParameters(parameters_count, parameters)
@@ -512,7 +505,7 @@ def parse_bytecode(code):
         try:
             opcode = opcodes[code[i]]
         except IndexError:
-            raise VerifyError(f"Failed to parse class: unknown opcode {code[i]}")
+            raise ClassFormatError(f"Failed to parse class: unknown opcode {code[i]}")
 
         match code[i]:
             # VARIABLE LENGTH
@@ -640,7 +633,7 @@ def parse_typeannotation(file):
                 uint(file.read(1))
             )
         case _:
-            raise VerifyError(f"Failed to parse class: invalid target_type '{target_type}' in type annotation")
+            raise ClassFormatError(f"Failed to parse class: invalid target_type '{target_type}' in type annotation")
 
     path_length = uint(file.read(1))
     path = list()
@@ -699,7 +692,7 @@ def parse_element_value(file) -> ElementValue:
                 values.append(parse_element_value(file))
 
             return ArrayElementValue(num_values, values)
-        case _: raise VerifyError(f"Failed to parse class: invalid element value union tag {tag}")
+        case _: raise ClassFormatError(f"Failed to parse class: invalid element value union tag {tag}")
 
 
 def parse_verification_type_info(file) -> VerificationTypeInfo:
@@ -714,7 +707,7 @@ def parse_verification_type_info(file) -> VerificationTypeInfo:
         case 6: return UninitializedThisVariableInfo()
         case 7: return ObjectVariableInfo(uint(file.read(2)))
         case 8: return UninitializedVariableInfo(uint(file.read(2)))
-        case _: raise VerifyError(f"Failed to parse class: invalid verification type union tag {tag}")
+        case _: raise ClassFormatError(f"Failed to parse class: invalid verification type union tag {tag}")
 
 
 # --------------------------------------------------
@@ -723,7 +716,7 @@ def parse_verification_type_info(file) -> VerificationTypeInfo:
 
 
 def parse_field_method(file, method, constant_pool) -> Field | Method:
-    access_flags = parse_method_flags(file) if method else parse_field_flags(file)
+    access_flags = parse_access_flags(file, MethodFlags if method else FieldFlags)
     name_index = uint(file.read(2))
     descriptor_index = uint(file.read(2))
 
@@ -761,31 +754,14 @@ def parse_field_method(file, method, constant_pool) -> Field | Method:
 # --------------------------------------------------
 
 
-def parse_class_flags(file) -> list[ClassFlags]:
-    # TODO: Parse bit mask properly
-    # hexlify(file.read(2)).decode("ascii")
-    file.read(2)
-    access_flags = list()
-    return access_flags
+def check_mask(bytes_1: bytes, bytes_2: bytes) -> bool:
+    return (int.from_bytes(bytes_1, 'big') & int.from_bytes(bytes_2, 'big')).to_bytes(max(len(bytes_1), len(bytes_2)), 'big') == bytes_2
 
 
-def parse_method_flags(file) -> list[MethodFlags]:
-    # hexlify(file.read(2)).decode("ascii")
-    file.read(2)
-    access_flags = list()
-    return access_flags
+def parse_access_flags(file, flags):
+    mask = hex_(file.read(2))
+    access_flags = [flag for flag in flags if check_mask(mask, flag.value)]
 
-
-def parse_field_flags(file)-> list[FieldFlags]:
-    # hexlify(file.read(2)).decode("ascii")
-    file.read(2)
-    access_flags = list()
-    return access_flags
-
-
-def parse_method_parameter_flags(file) -> list[MethodParameterFlags]:
-    file.read(2)
-    access_flags = list()
     return access_flags
 
 
@@ -794,9 +770,9 @@ def parse_method_parameter_flags(file) -> list[MethodParameterFlags]:
 # --------------------------------------------------
 
 
-def uint(bytez, signed=False) -> int:
+def uint(bytez, signed=False, endianness="big") -> int:
     return int.from_bytes(bytez, byteorder="big", signed=signed)
 
 
-def hex_(bytez) -> bytes:
+def hex_(bytez: bytes) -> bytes:
     return hexlify(bytez)

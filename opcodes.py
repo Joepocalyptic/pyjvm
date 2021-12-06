@@ -1060,6 +1060,7 @@ def breakpoint_():
 def impdep1():
     pass
 
+
 @opcode(255)
 def impdep2():
     pass
