@@ -771,7 +771,7 @@ def parse_access_flags(file, flags):
 
 
 def uint(bytez, signed=False, endianness="big") -> int:
-    return int.from_bytes(bytez, byteorder="big", signed=signed)
+    return int.from_bytes(bytez, byteorder=endianness, signed=signed)
 
 
 def hex_(bytez: bytes) -> bytes:
