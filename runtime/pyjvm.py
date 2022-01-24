@@ -48,7 +48,6 @@ class JVM:
         self.heap.append(instance)
         return instance
         
-
     def __cycle(self, clazz: Class):
         return self.__init(
                self.__load(clazz))
