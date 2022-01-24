@@ -32,6 +32,7 @@ def opcode(code, param_bytes=0):
 
     return decorator
 
+
 # --------------------------------------------------
 # OPCODES
 # Ordered by JVM spec; automatically sorted by decimal representation of opcode byte when inserted to dict

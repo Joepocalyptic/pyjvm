@@ -1,8 +1,8 @@
-from runtime.pyjvm import start
+from runtime.pyjvm import JVM
 
 
 def main():
-    start()
+    JVM("tests/HelloWorld_Fields.class")
 
 
 if __name__ == "__main__":

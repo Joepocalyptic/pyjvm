@@ -19,7 +19,7 @@ class FieldFlags(Enum):
 @dataclass
 class Field:
     access_flags: list[FieldFlags]
-    name_index: int
-    descriptor_index: int
+    name: int
+    descriptor: int
     attributes_count: int
     attribute_info: list[Attribute]

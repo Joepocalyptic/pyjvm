@@ -34,3 +34,9 @@ class Class:
     methods: list[Method]
     attributes_count: int
     attribute_info: list[Attribute]
+
+
+@dataclass
+class ClassInstance:
+    identifier: str
+    fields: dict[str, any]

@@ -1,3 +1,4 @@
+from struct import unpack
 from binascii import hexlify
 
 from objects.attributes import *
@@ -10,7 +11,7 @@ from objects.methods import *
 from objects.stack_map_frames import *
 from objects.type_verification import *
 
-from opcodes import opcodes, ParsedOpcode
+from runtime.opcodes import opcodes, ParsedOpcode
 
 
 # --------------------------------------------------
@@ -36,11 +37,7 @@ def parse_class(filename) -> Class:
 
     # Parse constant pool
     constant_pool_count = uint(file.read(2))
-    constant_pool = list()
-
-    # noinspection PyTypeChecker
-    # Bump to 1-indexed list
-    constant_pool.append(None)
+    constant_pool = [None]
 
     # Iterate through constant pool
     pool_count = constant_pool_count-1
@@ -48,12 +45,15 @@ def parse_class(filename) -> Class:
         constant_type = uint(file.read(1))
         entry = parse_constant_pool_entry(file, constant_type)
         constant_pool.append(entry)
+    
+    # Resolve constant symbolic links
+    constant_pool = link_constant_pool(constant_pool)
 
     # Decode access flag mask
     access_flags = parse_access_flags(file, ClassFlags)
 
-    this_class = uint(file.read(2))
-    super_class = uint(file.read(2))
+    this_class = constant_pool[uint(file.read(2))].name
+    super_class = constant_pool[uint(file.read(2))].name
 
     # Parse superinterfaces
     interfaces_count = uint(file.read(2))
@@ -164,13 +164,90 @@ def parse_constant_pool_entry(file, constant_type):
             raise ClassFormatError(f"Failed to parse class: invalid constant type {constant_type}")
 
 
+def link_constant_pool(constant_pool):
+    def link_entry(entry):
+        if entry.tag == 1:
+            return entry.bytes.decode("utf-8")
+        elif entry.tag == 12:
+            return PConstantNameAndTypeInfo(
+                link_entry(constant_pool[entry.name_index]),
+                link_entry(constant_pool[entry.descriptor_index])
+            )
+        elif entry.tag == 7:
+            return PConstantClassInfo(
+                link_entry(constant_pool[entry.name_index])
+            )
+        elif entry.tag == 9:
+            return PConstantFieldrefInfo(
+                link_entry(constant_pool[entry.class_index]),
+                link_entry(constant_pool[entry.name_and_type_index])
+            )
+        elif entry.tag == 10:
+            return PConstantMethodrefInfo(
+                link_entry(constant_pool[entry.class_index]),
+                link_entry(constant_pool[entry.name_and_type_index])
+            )
+        elif entry.tag == 11:
+            return PConstantInterfaceMethodrefInfo(
+                link_entry(constant_pool[entry.class_index]),
+                link_entry(constant_pool[entry.name_and_type_index])
+            )
+        elif entry.tag == 8:
+            return PConstantStringInfo(
+                link_entry(constant_pool[entry.string_index])
+            )
+        elif entry.tag == 3:
+            return PConstantIntegerInfo(
+                uint(entry.bytes, True)
+            )
+        elif entry.tag == 4:
+            return PConstantFloatInfo(
+                unpack(">f", entry.bytes)[0]
+            )
+        elif entry.tag == 5:
+            return PConstantLongInfo(
+                uint(bytes(bytearray(entry.high_bytes).extend(entry.low_bytes)), True)
+            )
+        elif entry.tag == 6:
+            return PConstantDoubleInfo(
+                unpack(">d", bytes(bytearray(entry.high_bytes).extend(entry.low_bytes)))[0]
+            )
+        elif entry.tag == 15:
+            return PConstantMethodHandleInfo(
+                entry.reference_kind,
+                link_entry(constant_pool[entry.reference_index])
+            )
+        elif entry.tag == 16:
+            return PConstantMethodTypeInfo(
+                link_entry(constant_pool[entry.descriptor_index])
+            )
+        elif entry.tag == 18:
+            return PConstantInvokeDynamicInfo(
+                entry.bootstrap_method_attr_index,
+                link_entry(constant_pool[entry.name_and_type_index])
+            )
+        else:
+            raise ClassFormatError(f"Failed to parse class: invalid constant pool tag {entry.tag}")
+
+    new_pool = [None]
+    for entry in constant_pool:
+        if entry is None: continue
+
+        linked = link_entry(entry)
+        new_pool.append(linked)
+
+        if isinstance(linked, PConstantDoubleInfo) or isinstance(linked, PConstantLongInfo):
+            new_pool.append(None)
+    return new_pool
+
+
 # --------------------------------------------------
 # ATTRIBUTES
 # --------------------------------------------------
 
 
 def parse_attribute(attribute, file, constant_pool):
-    attribute_name = constant_pool[attribute.attribute_name_index].bytes.decode("utf-8")
+    attribute_name = constant_pool[attribute.attribute_name_index]
     match attribute_name:
         case "ConstantValue":
             return AttributeConstantValue(uint(file.read(2)))
@@ -262,7 +339,7 @@ def parse_attribute(attribute, file, constant_pool):
 
                         localz = list()
                         for _ in range(tag-251):
-                            # Double and long might need special treatment
+                            # Double and long might need special treatment here
                             localz.append(parse_verification_type_info(file))
 
                         entries.append(AppendFrame(tag, offset_delta, localz))
@@ -311,7 +388,7 @@ def parse_attribute(attribute, file, constant_pool):
 
             for _ in range(number_of_classes):
                 classes.append(InnerClassEntry(
-                    uint(file.read(2)),
+                    constant_pool[file.read(2)],
                     uint(file.read(2)),
                     uint(file.read(2)),
                     uint(file.read(2))
@@ -321,7 +398,7 @@ def parse_attribute(attribute, file, constant_pool):
 
         case "EnclosingMethod":
             return AttributeEnclosingMethod(
-                uint(file.read(2)),
+                constant_pool[uint(file.read(2))],
                 uint(file.read(2))
             )
 
@@ -331,12 +408,12 @@ def parse_attribute(attribute, file, constant_pool):
         case "Signature":
             # TODO: Parse signatures
             return AttributeSignature(
-                uint(file.read(2))
+                constant_pool[uint(file.read(2))]
             )
 
         case "SourceFile":
             return AttributeSourceFile(
-                uint(file.read(2))
+                constant_pool[uint(file.read(2))]
             )
 
         case "SourceDebugExtension":
@@ -362,8 +439,8 @@ def parse_attribute(attribute, file, constant_pool):
                 local_variable_table.append(LocalVariable(
                     uint(file.read(2)),
                     uint(file.read(2)),
-                    uint(file.read(2)),
-                    uint(file.read(2)),
+                    constant_pool[uint(file.read(2))],
+                    constant_pool[uint(file.read(2))],
                     uint(file.read(2))
                 ))
 
@@ -377,8 +454,8 @@ def parse_attribute(attribute, file, constant_pool):
                 local_variable_type_table.append(LocalVariableType(
                     uint(file.read(2)),
                     uint(file.read(2)),
-                    uint(file.read(2)),
-                    uint(file.read(2)),
+                    constant_pool[uint(file.read(2))],
+                    constant_pool[uint(file.read(2))],
                     uint(file.read(2))
                 ))
 
@@ -392,7 +469,7 @@ def parse_attribute(attribute, file, constant_pool):
             annotations = list()
 
             for _ in range(num_annotations):
-                annotations.append(parse_annotation(file))
+                annotations.append(parse_annotation(file, constant_pool))
 
             return AttributeRuntimeVisibleAnnotations(num_annotations, annotations)
 
@@ -401,7 +478,7 @@ def parse_attribute(attribute, file, constant_pool):
             annotations = list()
 
             for _ in range(num_annotations):
-                annotations.append(parse_annotation(file))
+                annotations.append(parse_annotation(file, constant_pool))
 
             return AttributeRuntimeInvisibleAnnotations(num_annotations, annotations)
 
@@ -414,7 +491,7 @@ def parse_attribute(attribute, file, constant_pool):
                 annotations = list()
 
                 for _ in range(num_annotations):
-                    annotations.append(parse_annotation(file))
+                    annotations.append(parse_annotation(file, constant_pool))
 
                 parameter_annotations.append(ParameterAnnotations(num_annotations, annotations))
 
@@ -454,19 +531,19 @@ def parse_attribute(attribute, file, constant_pool):
             return AttributeRuntimeInvisibleTypeAnnotations(num_annotations, annotations)
 
         case "AnnotationDefault":
-            return AttributeAnnotationDefault(parse_element_value(file))
+            return AttributeAnnotationDefault(parse_element_value(file, constant_pool))
 
         case "BootstrapMethods":
             num_bootstrap_methods = uint(file.read(2))
             bootstrap_methods = list()
 
             for _ in range(num_bootstrap_methods):
-                bootstrap_method_ref = uint(file.read(2))
+                bootstrap_method_ref = constant_pool[uint(file.read(2))]
                 num_bootstrap_arguments = uint(file.read(2))
                 bootstrap_arguments = list()
 
                 for _ in range(num_bootstrap_arguments):
-                    bootstrap_arguments.append(uint(file.read(2)))
+                    bootstrap_arguments.append(constant_pool[uint(file.read(2))])
 
                 bootstrap_methods.append(BootstrapMethod(
                     bootstrap_method_ref,
@@ -587,14 +664,14 @@ def parse_bytecode(code):
     return operations
 
 
-def parse_annotation(file):
-    type_index = uint(file.read(2))
+def parse_annotation(file, constant_pool):
+    type_index = constant_pool[uint(file.read(2))]
     num_element_value_pairs = uint(file.read(2))
     element_value_pairs = list()
 
     for _ in range(num_element_value_pairs):
         element_name_index = uint(file.read(2))
-        element_value = parse_element_value(file)
+        element_value = parse_element_value(file, constant_pool)
 
         element_value_pairs.append(ElementValuePair(element_name_index, element_value))
 
@@ -651,7 +728,7 @@ def parse_typeannotation(file):
 
     for _ in range(num_element_value_pairs):
         element_name_index = uint(file.read(2))
-        element_value = parse_element_value(file)
+        element_value = parse_element_value(file, constant_pool)
 
         element_value_pairs.append(ElementValuePair(element_name_index, element_value))
 
@@ -665,31 +742,30 @@ def parse_typeannotation(file):
     )
 
 
-def parse_element_value(file) -> ElementValue:
+def parse_element_value(file, constant_pool) -> ElementValue:
     tag = file.read(1).decode("ascii")
     match tag:
-        case "B": return ByteElementValue(uint(file.read(2)))
-        case "C": return CharElementValue(uint(file.read(2)))
-        case "D": return DoubleElementValue(uint(file.read(2)))
-        case "F": return FloatElementValue(uint(file.read(2)))
-        case "I": return IntElementValue(uint(file.read(2)))
-        case "J": return LongElementValue(uint(file.read(2)))
-        case "S": return ShortElementValue(uint(file.read(2)))
-        case "Z": return ByteElementValue(uint(file.read(2)))
-        case "s": return StringElementValue(uint(file.read(2)))
-        case "s": return StringElementValue(uint(file.read(2)))
+        case "B": return ByteElementValue(constant_pool[uint(file.read(2))])
+        case "C": return CharElementValue(constant_pool[uint(file.read(2))])
+        case "D": return DoubleElementValue(constant_pool[uint(file.read(2))])
+        case "F": return FloatElementValue(constant_pool[uint(file.read(2))])
+        case "I": return IntElementValue(constant_pool[uint(file.read(2))])
+        case "J": return LongElementValue(constant_pool[uint(file.read(2))])
+        case "S": return ShortElementValue(constant_pool[uint(file.read(2))])
+        case "Z": return ByteElementValue(constant_pool[uint(file.read(2))])
+        case "s": return StringElementValue(constant_pool[uint(file.read(2))])
         case "e": return EnumElementValue(
-                uint(file.read(2)),
-                uint(file.read(2))
+                constant_pool[uint(file.read(2))],
+                constant_pool[uint(file.read(2))]
             )
-        case "c": return ClassElementValue(uint(file.read(2)))
-        case "@": return AnnotationElementValue(parse_annotation(file))
+        case "c": return ClassElementValue(constant_pool[uint(file.read(2))])
+        case "@": return AnnotationElementValue(parse_annotation(file, constant_pool))
         case "[":
             num_values = uint(file.read(2))
             values = list()
 
             for _ in range(num_values):
-                values.append(parse_element_value(file))
+                values.append(parse_element_value(file, constant_pool))
 
             return ArrayElementValue(num_values, values)
         case _: raise ClassFormatError(f"Failed to parse class: invalid element value union tag {tag}")
@@ -717,8 +793,8 @@ def parse_verification_type_info(file) -> VerificationTypeInfo:
 
 def parse_field_method(file, method, constant_pool) -> Field | Method:
     access_flags = parse_access_flags(file, MethodFlags if method else FieldFlags)
-    name_index = uint(file.read(2))
-    descriptor_index = uint(file.read(2))
+    name = constant_pool[uint(file.read(2))]
+    descriptor = constant_pool[uint(file.read(2))]
 
     # Parse structure attributes
     attributes_count = uint(file.read(2))
@@ -736,14 +812,14 @@ def parse_field_method(file, method, constant_pool) -> Field | Method:
 
     return Method(
         access_flags,
-        name_index,
-        descriptor_index,
+        name,
+        descriptor,
         attributes_count,
         attribute_info
     ) if method else Field(
         access_flags,
-        name_index,
-        descriptor_index,
+        name,
+        descriptor,
         attributes_count,
         attribute_info
     )
@@ -762,7 +838,7 @@ def parse_access_flags(file, flags):
     mask = hex_(file.read(2))
     access_flags = [flag for flag in flags if check_mask(mask, flag.value)]
 
-    return access_flags
+    return access_flags    
 
 
 # --------------------------------------------------

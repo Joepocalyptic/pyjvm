@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 
+from objects.constant_pool import *
 from objects.stack_map_frames import StackMapFrame
-from opcodes import ParsedOpcode
+from runtime.opcodes import ParsedOpcode
 
 
 class Attribute:
@@ -25,7 +26,7 @@ class AttributeUnrecognized(Attribute):
 
 @dataclass
 class AttributeConstantValue(Attribute):
-    constantvalue_index: int
+    constantvalue: PConstantPoolEntry
 
 
 @dataclass
@@ -82,9 +83,9 @@ class InnerClassAccessFlags(Enum):
 
 @dataclass
 class InnerClassEntry:
-    inner_class_info_index: int
-    outer_class_info_index: int
-    inner_name_index: int
+    inner_class_info: PConstantClassInfo
+    outer_class_info: any
+    inner_name: any
     inner_class_access_flags: list[InnerClassAccessFlags]
 
 
@@ -96,8 +97,8 @@ class AttributeInnerClasses(Attribute):
 
 @dataclass
 class AttributeEnclosingMethod(Attribute):
-    class_index: int
-    method_index: int
+    clazz: PConstantClassInfo
+    method: any
 
 
 class AttributeSynthetic(Attribute):
@@ -106,12 +107,12 @@ class AttributeSynthetic(Attribute):
 
 @dataclass
 class AttributeSignature(Attribute):
-    signature_index: int
+    signature: str
 
 
 @dataclass
 class AttributeSourceFile(Attribute):
-    sourcefile_index: int
+    sourcefile: str
 
 
 @dataclass
@@ -135,8 +136,8 @@ class AttributeLineNumberTable(Attribute):
 class LocalVariable:
     start_pc: int
     length: int
-    name_index: int
-    descriptor_index: int
+    name: str
+    descriptor: str
     index: int
 
 
@@ -150,8 +151,8 @@ class AttributeLocalVariableTable(Attribute):
 class LocalVariableType:
     start_pc: int
     length: int
-    name_index: int
-    signature_index: int
+    name: str
+    signature: str
     index: int
 
 
@@ -172,69 +173,69 @@ class ElementValue:
 
 @dataclass
 class ByteElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantIntegerInfo
 
 
 @dataclass
 class CharElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantIntegerInfo
 
 
 @dataclass
 class DoubleElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantDoubleInfo
 
 
 @dataclass
 class FloatElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantFloatInfo
 
 
 @dataclass
 class IntElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantIntegerInfo
 
 
 @dataclass
 class LongElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantLongInfo
 
 
 @dataclass
 class ShortElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantIntegerInfo
 
 
 @dataclass
 class BooleanElementValue(ElementValue):
-    const_value_index: int
+    const_value: PConstantIntegerInfo
 
 
 @dataclass
 class StringElementValue(ElementValue):
-    const_value_index: int
+    const_value: str
 
 
 @dataclass
 class EnumElementValue(ElementValue):
-    type_name_index: int
-    const_name_index: int
+    type_name: str
+    const_name: str
 
 
 @dataclass
 class ClassElementValue(ElementValue):
-    class_info_index: int
+    class_info: str
 
 
 @dataclass
 class ElementValuePair:
-    element_name_index: int
+    element_name: int
     element_value: ElementValue
 
 
 @dataclass
 class Annotation(ElementValue):
-    type_index: int
+    type_: str
     num_element_value_pairs: int
     element_value_pairs: list[ElementValuePair]
 
@@ -356,7 +357,7 @@ class TypeAnnotation:
     target_type: str
     target_info: TargetInfo
     target_path: TypePath
-    type_index: int
+    type_: str
     num_element_value_pairs: int
     element_value_pairs: list[ElementValuePair]
 
@@ -380,9 +381,9 @@ class AttributeAnnotationDefault(Attribute):
 
 @dataclass
 class BootstrapMethod:
-    bootstrap_method_ref: int
+    bootstrap_method_ref: PConstantMethodHandleInfo
     num_bootstrap_arguments: int
-    bootstrap_arguments: list[int]
+    bootstrap_arguments: list[PConstantPoolEntry]
 
 
 @dataclass
